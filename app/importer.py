@@ -5,15 +5,13 @@ from typing import List, Dict
 import telethon
 
 
-# python importer.py .\data\work_chat.json
-
-
 def parse_args():
     parser = argparse.ArgumentParser(description='Imports telegram chat from file.')
-    parser.add_argument('input_file')
+    parser.add_argument('input_file', help='Input file.')
     parser.add_argument('-i', dest='show_info', action='store_true', help='Show chat info.')
     parser.add_argument('-l', dest='show_users', action='store_true', help='Show user list.')
-    parser.add_argument('-u', dest='user_id')
+    parser.add_argument('-u', dest='user_id', help='Filter by user ID.')
+    parser.add_argument('-of', dest='output_file', help='Output file.')
     args = parser.parse_args()
     return args
 
@@ -64,8 +62,36 @@ def get_user_messages(chat_messages, user_id) -> List:
     return user_messages
 
 
-def save_user_messages(user_messages: List):
-    pass
+def get_words_from_message(message):
+    words = []
+    if isinstance(message, List):
+        pass
+    else:
+        word = ''
+        for ch in message:
+            if ch.isalnum() or ch in '.,!?;/':
+                word += ch
+            else:
+                if len(word) > 0:
+                    words.append(word)
+                word = ''
+    return words
+
+
+def prepare_messages(messages: List):
+    prepared = []
+    for message in messages:
+        words = get_words_from_message(message)
+        if len(words) != 0:
+            prepared.append(' '.join(words))
+    return prepared
+
+
+def save_user_messages(filename: str, user_messages: List):
+    prepared = prepare_messages(user_messages)
+    with open(filename, 'w', encoding='utf-8') as f:
+        for message in prepared:
+            f.write(message + '. \n')
 
 
 def main():
@@ -87,7 +113,10 @@ def main():
     if args.user_id:
         user_messages = get_user_messages(messages, args.user_id)
         if len(user_messages) > 0:
-            save_user_messages(user_messages)
+            if args.output_file:
+                save_user_messages(args.output_file, user_messages)
+            else:
+                print(f'User ID: {args.user_id}. Messages count {len(messages)}')
         else:
             print(f'No messages found for user "{args.user_id}"')
 
