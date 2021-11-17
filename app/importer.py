@@ -5,6 +5,10 @@ from typing import List, Dict
 import telethon
 
 
+text_types = ['bold', 'italic', 'underline', 'strikethrough', 'text_link']
+sentences_separators = '.?!'
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Imports telegram chat from file.')
     parser.add_argument('input_file', help='Input file.')
@@ -25,7 +29,20 @@ def read_chat_from_file(filename: str):
 
 
 def get_chat_info(chat_dictionary: Dict) -> Dict:
-    return {info_key: chat_dictionary[info_key] for info_key in ['name', 'id']}
+    info = {info_key: chat_dictionary[info_key] for info_key in ['name', 'id']}
+    # +++
+    message_types = set()
+    message_text_types = set()
+    messages = chat_dictionary['messages']
+    for message in messages:
+        message_types.add(message['type'])
+        if message['type'] == 'message' and isinstance(message['text'], List):
+            for message_text_part in message['text']:
+                if isinstance(message_text_part, Dict) and message_text_part['type'] not in text_types:
+                    message_text_types.add(message_text_part['type'])
+    info['message_types'] = message_types
+    info['message_text_types'] = message_text_types
+    return info
 
 
 def is_message(chat_message: Dict) -> bool:
@@ -54,44 +71,73 @@ def show_users(chat_messages: Dict):
         print(f'{num + 1}. {users[key]} ({key})')
 
 
-def get_user_messages(chat_messages, user_id) -> List:
+def message_to_string(message) -> str:
+    msg = ''
+    if isinstance(message, List):
+        for part in message:
+            if isinstance(part, str):
+                msg += part
+            elif isinstance(part, Dict) and part['type'] in text_types:
+                msg += part['text']
+            else:
+                msg += ''
+    else:
+        msg = message
+    return msg
+
+
+def get_user_messages(chat_messages: Dict, user_id: str) -> List:
     user_messages = []
     for chat_message in chat_messages:
         if is_message(chat_message) and chat_message['from_id'] == user_id:
-            user_messages.append(chat_message['text'])
+            user_messages.append(message_to_string(chat_message['text']))
     return user_messages
 
 
-def get_words_from_message(message):
-    words = []
-    if isinstance(message, List):
-        pass
-    else:
-        word = ''
-        for ch in message:
-            if ch.isalnum() or ch in '.,!?;/':
-                word += ch
-            else:
-                if len(word) > 0:
-                    words.append(word)
-                word = ''
-    return words
+def prepare_message(message: str) -> [str, bool]:
+    prepared = message.lstrip().rstrip()
+    if len(prepared) == 0:
+        return False
+    prepared = ' '.join(prepared.splitlines())
 
+    prepared = prepared.replace('т.к.', 'т_к_')
 
-def prepare_messages(messages: List):
-    prepared = []
-    for message in messages:
-        words = get_words_from_message(message)
-        if len(words) != 0:
-            prepared.append(' '.join(words))
     return prepared
+
+
+def try_to_split_message(message: str) -> List[str]:
+    splited = [message]
+    for separator in sentences_separators:
+        iter_splited = []
+        for msg in splited:
+            splited_msg = msg.split(separator)
+            for spl_part in splited_msg:
+                prepared = prepare_message(spl_part)
+                if prepared:
+                    if prepared[-1] not in sentences_separators:
+                        prepared += separator
+                    iter_splited.append(prepared)
+        splited = iter_splited
+
+    return splited
+
+
+def prepare_messages(messages: List[str]) -> List[str]:
+    prepared_messages = []
+    for message in messages:
+        prepared_message = prepare_message(message)
+        if prepared_message:
+            splited = try_to_split_message(prepared_message)
+            for spl in splited:
+                prepared_messages.append(spl)
+    return prepared_messages
 
 
 def save_user_messages(filename: str, user_messages: List):
     prepared = prepare_messages(user_messages)
     with open(filename, 'w', encoding='utf-8') as f:
         for message in prepared:
-            f.write(message + '. \n')
+            f.write(message + ' ')
 
 
 def main():
